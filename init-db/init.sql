@@ -1,0 +1,18 @@
+CREATE TABLE IF NOT EXISTS exchange_rates (
+    id SERIAL PRIMARY KEY,
+    base VARCHAR(3) NOT NULL,
+    currency VARCHAR(3) NOT NULL,
+    rate FLOAT NOT NULL,
+    updated_at DATE DEFAULT CURRENT_DATE
+);
+
+CREATE TABLE IF NOT EXISTS exchange_rates_log (
+    id SERIAL PRIMARY KEY,
+    request VARCHAR(4) NOT NULL,
+    updated_at DATE DEFAULT CURRENT_DATE
+);
+
+CREATE TABLE IF NOT EXISTS api_keys (
+		key TEXT PRIMARY KEY,
+		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
