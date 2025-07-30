@@ -13,6 +13,8 @@ services:
       - db
     networks:
       - app-network
+    environment:
+    - TZ=Europe/Moscow
     restart: unless-stopped
 
   db:

@@ -35,6 +35,7 @@ func (h *Handler) GetHistoricalRate(c *gin.Context) {
 	}
 
 	historicalRates, missingHistoricalRates, err := h.DB.GetRatesByDate(h.Api.GetDefaultBase(), date)
+	log.Print(missingHistoricalRates)
 
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -42,18 +43,10 @@ func (h *Handler) GetHistoricalRate(c *gin.Context) {
 	}
 
 	if len(missingHistoricalRates) != 0 {
-		ratesApi, err := h.Api.GetLatestExchangeRatesByDate(date)
+		ratesApi, err := h.DB.FillMissingData(date, missingHistoricalRates, h.Api)
 		if err != nil {
 			c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
 			return
-		}
-
-		for _, rate := range missingHistoricalRates {
-			for _, rateApi := range ratesApi {
-				if rateApi.Base == rate.Base {
-					h.DB.InsertRate(rateApi.Base, rate.Currency, rateApi.Rates[rate.Currency], date)
-				}
-			}
 		}
 
 		c.JSON(http.StatusOK, gin.H{

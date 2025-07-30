@@ -29,6 +29,7 @@ func main() {
 	}
 
 	handlers.DB.InitDB(handlers.Api)
+	handlers.DB.CronUpdateData(handlers.Api)
 	defer handlers.DB.CloseConnect()
 
 	srv := new(server.Server)

@@ -16,4 +16,6 @@ type DataBase interface {
 	GetRatesByPair(base, currency string) (Rate, error)
 	GetRatesByDate(bases map[string][]string, DateStr string) (rates []api.RateResponse, missingRates []Rate, err error)
 	VerifyApiKey(ApiKey string) (bool, error)
+	CronUpdateData(api api.ExchangeRates)
+	FillMissingData(date string, missingRates []Rate, api api.ExchangeRates) ([]api.RateResponse, error)
 }

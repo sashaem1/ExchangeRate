@@ -7,6 +7,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/robfig/cron/v3"
 	"github.com/sashaem1/ExchangeRate/internal/api"
 	database "github.com/sashaem1/ExchangeRate/internal/dataBase"
 )
@@ -62,9 +63,14 @@ func (pdb *PostgreSqlDB) fillDefaultData(api api.ExchangeRates) {
 		"2025-07-23",
 		"2025-07-24",
 		"2025-07-25",
+		time.Now().Format("2006-01-02"), //догрузим актуальные данные в бд
 	}
 
-	for _, date := range defaultDate {
+	pdb.CheckingMissingData(defaultDate, api)
+}
+
+func (pdb *PostgreSqlDB) CheckingMissingData(dates []string, api api.ExchangeRates) {
+	for _, date := range dates {
 		_, missingHistoricalRates, err := pdb.GetRatesByDate(api.GetDefaultBase(), date)
 
 		if err != nil {
@@ -73,27 +79,53 @@ func (pdb *PostgreSqlDB) fillDefaultData(api api.ExchangeRates) {
 		}
 
 		if len(missingHistoricalRates) != 0 {
-			ratesApi, err := api.GetLatestExchangeRatesByDate(date)
+			_, err := pdb.FillMissingData(date, missingHistoricalRates, api)
+
 			if err != nil {
 				log.Println(err.Error())
-				return
+				continue
 			}
-
-			for _, rate := range missingHistoricalRates {
-				for _, rateApi := range ratesApi {
-					if rateApi.Base == rate.Base {
-						pdb.InsertRate(rateApi.Base, rate.Currency, rateApi.Rates[rate.Currency], date)
-					}
-				}
-			}
-
 		}
 	}
+}
+
+func (pdb *PostgreSqlDB) FillMissingData(date string, missingRates []database.Rate, api api.ExchangeRates) ([]api.RateResponse, error) {
+	ratesApi, err := api.GetLatestExchangeRatesByDate(date)
+	if err != nil {
+		return ratesApi, err
+	}
+
+	for _, rate := range missingRates {
+		for _, rateApi := range ratesApi {
+			if rateApi.Base == rate.Base {
+				pdb.InsertRate(rateApi.Base, rate.Currency, rateApi.Rates[rate.Currency], date)
+			}
+		}
+	}
+	return ratesApi, nil
 }
 
 func (pdb *PostgreSqlDB) fillApiKey() {
 	defaultApiFey := os.Getenv("DEFAULT_API_KEY")
 	pdb.InsertApiKey(defaultApiFey)
+}
+
+func (pdb *PostgreSqlDB) CronUpdateData(api api.ExchangeRates) {
+	cron := cron.New()
+
+	_, err := cron.AddFunc("* 12 * * *", func() {
+		log.Println("!Проверка крона!")
+		actualDate := []string{
+			time.Now().Format("2006-01-02"), //догрузим актуальные данные в бд
+		}
+		pdb.CheckingMissingData(actualDate, api)
+	})
+
+	if err != nil {
+		log.Fatalf("Ошибка при добавлении задачи в cron: %v", err)
+	}
+
+	cron.Start()
 }
 
 func (pdb *PostgreSqlDB) CloseConnect() {
