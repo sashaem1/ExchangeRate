@@ -2,9 +2,7 @@ package main
 
 import (
 	"log"
-	"os"
 
-	"github.com/joho/godotenv"
 	"github.com/sashaem1/ExchangeRate/internal/api"
 	"github.com/sashaem1/ExchangeRate/internal/dataBase/postgresql"
 	"github.com/sashaem1/ExchangeRate/internal/handler"
@@ -12,15 +10,6 @@ import (
 
 	_ "github.com/lib/pq"
 )
-
-func init() {
-	if os.Getenv("ENV") == "" {
-		err := godotenv.Load()
-		if err != nil {
-			log.Println("Предупреждение: Не удалось найти .env файл")
-		}
-	}
-}
 
 func main() {
 	handlers := handler.Handler{
