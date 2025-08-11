@@ -1,7 +1,7 @@
 CREATE TABLE IF NOT EXISTS exchange_rates (
     id SERIAL PRIMARY KEY,
-    base VARCHAR(3) NOT NULL,
-    currency VARCHAR(3) NOT NULL,
+    BaseCurrency VARCHAR(3) NOT NULL,
+    TargetCurrency VARCHAR(3) NOT NULL,
     rate FLOAT NOT NULL,
     updated_at DATE DEFAULT CURRENT_DATE
 );
