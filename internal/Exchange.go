@@ -3,7 +3,7 @@ package internal
 import (
 	"context"
 	"fmt"
-	"log"
+	"os"
 	"time"
 )
 
@@ -16,6 +16,8 @@ type Exchange struct {
 	Rate           float64
 	Timestamp      time.Time
 }
+
+const dataFormat string = "2006-01-02"
 
 func NewExchange(baseCurrency, targetCurrency Currency, rate float64, timestamp time.Time) (Exchange, error) {
 	op := "internal.NewExchange"
@@ -34,9 +36,10 @@ func NewExchange(baseCurrency, targetCurrency Currency, rate float64, timestamp 
 }
 
 type ExchangeStorage interface {
-	Get(ctx context.Context, baseCurrencyCode, targetCurrencyCode string, date time.Time) (Exchange, error)
-	Set(ctx context.Context, exchange Exchange) error
-	VerificationAPIKey(ctx context.Context, APIKey string) (bool, error)
+	GetExchange(ctx context.Context, baseCurrencyCode, targetCurrencyCode string, date time.Time) (Exchange, error)
+	SetExchange(ctx context.Context, exchange Exchange) error
+	GetAPIKey(ctx context.Context, APIKey string) (string, error)
+	SetAPIKey(ctx context.Context, APIKey string) error
 }
 
 type ExchangeExternalAPI interface {
@@ -60,7 +63,7 @@ func (rr *ExchangeRepository) GetByBase(baseCurrencyCode, targetCurrencyCode str
 	op := "Exchange.GetByBase"
 	ctx := context.Background()
 
-	exchange, err := rr.storage.Get(ctx, baseCurrencyCode, targetCurrencyCode, time.Now())
+	exchange, err := rr.storage.GetExchange(ctx, baseCurrencyCode, targetCurrencyCode, time.Now())
 	if err != nil {
 		return Exchange{}, fmt.Errorf("%s:%s", op, err)
 	}
@@ -72,7 +75,7 @@ func (rr *ExchangeRepository) GetByBase(baseCurrencyCode, targetCurrencyCode str
 			return Exchange{}, fmt.Errorf("%s:%s", op, err)
 		}
 
-		err = rr.storage.Set(ctx, exchange)
+		err = rr.storage.SetExchange(ctx, exchange)
 		if err != nil {
 			return Exchange{}, fmt.Errorf("%s:%s", op, err)
 		}
@@ -86,17 +89,44 @@ func (rr *ExchangeRepository) GetByDate(date string) ([]Exchange, error) {
 	ctx := context.Background()
 
 	exchanges := []Exchange{}
-	missingExchange := make(map[string][]string)
-	parsedDate, err := time.Parse("2006-01-02", date)
+	parsedDate, err := time.Parse(dataFormat, date)
 	if err != nil {
 		return exchanges, fmt.Errorf("%s: %s", op, err)
 	}
 
+	exchanges, missingExchange, err := rr.getByDateFromDb(ctx, parsedDate)
+	if err != nil {
+		return exchanges, fmt.Errorf("%s: %s", op, err)
+	}
+
+	if len(missingExchange) == 0 {
+		return exchanges, nil
+	} else {
+		exchanges, err = rr.getByDateFromExAPI(ctx, parsedDate)
+		if err != nil {
+			return exchanges, fmt.Errorf("%s: %s", op, err)
+		}
+
+		err = rr.setByMisToDb(ctx, parsedDate, missingExchange, exchanges)
+		if err != nil {
+			return exchanges, fmt.Errorf("%s: %s", op, err)
+		}
+
+	}
+
+	return exchanges, nil
+}
+
+func (rr *ExchangeRepository) getByDateFromDb(ctx context.Context, date time.Time) (exchanges []Exchange, missingExchange map[string][]string, err error) {
+	op := "internal.GetByDateFromDb"
+	exchanges = []Exchange{}
+	missingExchange = make(map[string][]string)
+
 	for baseCurrencyCode, targetCurrencyCodes := range defaultBase {
 		for _, tcc := range targetCurrencyCodes {
-			currentExchange, err := rr.storage.Get(ctx, baseCurrencyCode, tcc, parsedDate)
+			currentExchange, err := rr.storage.GetExchange(ctx, baseCurrencyCode, tcc, date)
 			if err != nil {
-				return exchanges, fmt.Errorf("%s: %s", op, err)
+				return exchanges, missingExchange, fmt.Errorf("%s: %s", op, err)
 			}
 
 			if currentExchange.Timestamp.IsZero() {
@@ -108,46 +138,111 @@ func (rr *ExchangeRepository) GetByDate(date string) ([]Exchange, error) {
 		}
 	}
 
-	if len(missingExchange) == 0 {
-		return exchanges, nil
-	} else {
-		exchanges = exchanges[:0]
-		for baseCurrencyCode, targetCurrencyCodes := range defaultBase {
+	return exchanges, missingExchange, nil
+}
 
-			currentExchange, err := rr.externalAPI.GetByDate(
-				baseCurrencyCode, targetCurrencyCodes, parsedDate)
+func (rr *ExchangeRepository) getByDateFromExAPI(ctx context.Context, date time.Time) (exchanges []Exchange, err error) {
+	op := "internal.GetByDateFromExAPI"
+	exchanges = []Exchange{}
 
-			if err != nil {
-				return exchanges, fmt.Errorf("%s: %s", op, err)
-			}
+	for baseCurrencyCode, targetCurrencyCodes := range defaultBase {
 
-			log.Printf("currentExchange from external API: ", currentExchange)
-			exchanges = append(exchanges, currentExchange...)
+		currentExchange, err := rr.externalAPI.GetByDate(
+			baseCurrencyCode, targetCurrencyCodes, date)
+
+		if err != nil {
+			return exchanges, fmt.Errorf("%s: %s", op, err)
 		}
 
-		for _, exchange := range exchanges {
-			misTarCurrencyCodes, ok := missingExchange[exchange.BaseCurrency.Code]
-			if ok {
-				for _, mtcc := range misTarCurrencyCodes {
-					if exchange.TargetCurrency.Code == mtcc {
-						rr.storage.Set(ctx, exchange)
+		exchanges = append(exchanges, currentExchange...)
+	}
+
+	return
+}
+
+func (rr *ExchangeRepository) setByMisToDb(ctx context.Context, date time.Time, missingExchange map[string][]string, exchanges []Exchange) error {
+	op := "internal.setByMisToDb"
+
+	for _, exchange := range exchanges {
+		misTarCurrencyCodes, ok := missingExchange[exchange.BaseCurrency.Code]
+		if ok {
+			for _, mtcc := range misTarCurrencyCodes {
+				if exchange.TargetCurrency.Code == mtcc {
+					err := rr.storage.SetExchange(ctx, exchange)
+					if err != nil {
+						return fmt.Errorf("%s: %s", op, err)
 					}
 				}
 			}
 		}
 	}
 
-	return exchanges, nil
+	return nil
 }
 
 func (rr *ExchangeRepository) VerificationAPIKey(APIKey string) (bool, error) {
 	op := "internal.VerificationAPIKey"
 	ctx := context.Background()
 
-	verificationStatus, err := rr.storage.VerificationAPIKey(ctx, APIKey)
+	verification, err := rr.storage.GetAPIKey(ctx, APIKey)
 	if err != nil {
 		return false, fmt.Errorf("%s: %s", op, err)
 	}
 
-	return verificationStatus, nil
+	return verification != "", nil
+}
+
+func (rr *ExchangeRepository) InitExchangeRepository() error {
+	op := "internal.InitExchangeRepository"
+	ctx := context.Background()
+	initDates := []time.Time{
+		time.Date(2025, time.July, 21, 0, 0, 0, 0, time.UTC),
+		time.Date(2025, time.July, 22, 0, 0, 0, 0, time.UTC),
+		time.Date(2025, time.July, 23, 0, 0, 0, 0, time.UTC),
+		time.Date(2025, time.July, 24, 0, 0, 0, 0, time.UTC),
+		time.Date(2025, time.July, 25, 0, 0, 0, 0, time.UTC),
+		time.Now(),
+	}
+
+	err := rr.initData(ctx, initDates)
+	if err != nil {
+		return fmt.Errorf("%s: %s", op, err)
+	}
+
+	envAPIKey := os.Getenv("DEFAULT_API_KEY")
+	err = rr.initAPIKey(ctx, envAPIKey)
+	if err != nil {
+		return fmt.Errorf("%s: %s", op, err)
+	}
+
+	return nil
+}
+
+func (rr *ExchangeRepository) initData(ctx context.Context, initDates []time.Time) error {
+	op := "internal.initData"
+
+	for _, date := range initDates {
+		exchanges, err := rr.getByDateFromExAPI(ctx, date)
+		if err != nil {
+			return fmt.Errorf("%s: %s", op, err)
+		}
+
+		err = rr.setByMisToDb(ctx, date, defaultBase, exchanges)
+		if err != nil {
+			return fmt.Errorf("%s: %s", op, err)
+		}
+	}
+
+	return nil
+}
+
+func (rr *ExchangeRepository) initAPIKey(ctx context.Context, APIKey string) error {
+	op := "internal.initAPIKey"
+
+	err := rr.storage.SetAPIKey(ctx, APIKey)
+	if err != nil {
+		return fmt.Errorf("%s: %s", op, err)
+	}
+
+	return nil
 }

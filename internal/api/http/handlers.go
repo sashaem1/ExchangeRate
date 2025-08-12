@@ -72,10 +72,12 @@ func (h *Handler) getCurrentRateByDate(c *gin.Context) {
 	vAPI, err := h.exchangeRepository.VerificationAPIKey(apiKey)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
 	}
 
 	if !vAPI {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Не верный API ключ"})
+		return
 	}
 
 	exchanges, err := h.exchangeRepository.GetByDate(date)

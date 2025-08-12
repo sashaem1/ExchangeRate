@@ -1,6 +1,7 @@
 package http
 
 import (
+	"fmt"
 	"net/http"
 	"time"
 
@@ -8,6 +9,7 @@ import (
 )
 
 type ExchangeRepository interface {
+	InitExchangeRepository() error
 	GetByBase(baseCurrencyCode, targetCurrencyCode string) (internal.Exchange, error)
 	GetByDate(date string) ([]internal.Exchange, error)
 	VerificationAPIKey(apiKey string) (bool, error)
@@ -23,6 +25,7 @@ func NewServer(exchangeRepository ExchangeRepository) *Server {
 }
 
 func (s *Server) Start(port string, handler http.Handler) error {
+	op := "http.Start"
 	s.httpServer = &http.Server{
 		Addr:           ":" + port,
 		Handler:        handler,
@@ -31,5 +34,9 @@ func (s *Server) Start(port string, handler http.Handler) error {
 		WriteTimeout:   10 * time.Second,
 	}
 
+	err := s.exchangeRepository.InitExchangeRepository()
+	if err != nil {
+		return fmt.Errorf("%s: %s", op, err)
+	}
 	return s.httpServer.ListenAndServe()
 }
