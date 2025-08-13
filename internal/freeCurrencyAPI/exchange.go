@@ -48,6 +48,13 @@ func (fc *ExchangeExternalAPI) GetByBase(baseCurrencyCode, targetCurrencyCode st
 		return internal.Exchange{}, fmt.Errorf("%s: %s", op, err)
 	}
 
+	if apiResp.Rates[targetCurrencyCode] == 0 {
+		err := fmt.Sprintf("Не удалось получить данные со стороннего апи")
+		return internal.Exchange{}, fmt.Errorf("%s: %s", op, err)
+	}
+
+	// log.Printf("Получены данные с FreeCurrencyAPI: %v", apiResp)
+
 	exchange := internal.Exchange{}
 	baseCurrency, err := internal.NewCurrency(baseCurrencyCode)
 	if err != nil {

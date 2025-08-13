@@ -1,23 +1,26 @@
 package http
 
 import (
+	"context"
+	"log"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/sashaem1/ExchangeRate/internal"
 )
-
-type Handler struct {
-	exchangeRepository ExchangeRepository
-}
 
 type RateResponse struct {
 	Base  string
 	Rates map[string]float64 `json:"data"`
 }
 
-func NewHandler(exchangeRepository ExchangeRepository) *Handler {
-	return &Handler{exchangeRepository: exchangeRepository}
+type Handler struct {
+	server *Server
+}
+
+func NewHandler(server *Server) *Handler {
+	return &Handler{server: server}
 }
 
 func (h *Handler) InitRouters() *gin.Engine {
@@ -27,7 +30,7 @@ func (h *Handler) InitRouters() *gin.Engine {
 	{
 		rate := api.Group("/rate")
 		{
-			rate.GET("/current", h.getCurrentRateByBase)
+			rate.GET("/current", h.getCurrentRateByPair)
 			rate.GET("/historical", h.getCurrentRateByDate)
 		}
 	}
@@ -35,23 +38,35 @@ func (h *Handler) InitRouters() *gin.Engine {
 	return router
 }
 
-func (h *Handler) getCurrentRateByBase(c *gin.Context) {
+func (h *Handler) getCurrentRateByPair(c *gin.Context) {
+	op := "http.handlers.getCurrentRateByBase"
 	base := c.Query("base")
 	symbol := c.Query("symbol")
-	apiKey := c.Query("apikey")
+	apiKeyString := c.Query("apikey")
+	ctx := context.Background()
 
-	vAPI, err := h.exchangeRepository.VerificationAPIKey(apiKey)
+	actionLog, err := internal.NewActionLog("pair", time.Now())
+	if err != nil {
+		log.Printf("%s: %s", op, err)
+	}
+
+	err = h.server.actionLogRepository.InsertLog(ctx, actionLog)
+	if err != nil {
+		log.Printf("%s: %s", op, err)
+	}
+
+	apiKey, err := h.server.apiKeyRepository.VerificationAPIKey(apiKeyString)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	if !vAPI {
+	if !apiKey.Valid {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Не верный API ключ"})
 		return
 	}
 
-	exchange, err := h.exchangeRepository.GetByBase(base, symbol)
+	exchange, err := h.server.exchangeRepository.GetByBase(base, symbol)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -66,21 +81,33 @@ func (h *Handler) getCurrentRateByBase(c *gin.Context) {
 }
 
 func (h *Handler) getCurrentRateByDate(c *gin.Context) {
+	op := "http.handlers.getCurrentRateByDate"
 	date := c.Query("date")
-	apiKey := c.Query("apikey")
+	apiKeyString := c.Query("apikey")
+	ctx := context.Background()
 
-	vAPI, err := h.exchangeRepository.VerificationAPIKey(apiKey)
+	actionLog, err := internal.NewActionLog("date", time.Now())
+	if err != nil {
+		log.Printf("%s: %s", op, err)
+	} else {
+		err = h.server.actionLogRepository.InsertLog(ctx, actionLog)
+		if err != nil {
+			log.Printf("%s: %s", op, err)
+		}
+	}
+
+	apiKey, err := h.server.apiKeyRepository.VerificationAPIKey(apiKeyString)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	if !vAPI {
+	if !apiKey.Valid {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Не верный API ключ"})
 		return
 	}
 
-	exchanges, err := h.exchangeRepository.GetByDate(date)
+	exchanges, err := h.server.exchangeRepository.GetByDate(date)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return

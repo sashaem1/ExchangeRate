@@ -21,11 +21,16 @@ func main() {
 	exchangeStorage := postgresql.NewExchangeStorage(pgxPool)
 	externalAPIKey := os.Getenv("FREECURRENCY_API_KEY")
 	ExchangeExternalAPI := freecurrencyapi.NewExchangeExternalAPI(externalAPIKey)
-
 	exchangeRepo := internal.NewExchangeRepository(exchangeStorage, ExchangeExternalAPI)
 
-	httpServer := http.NewServer(exchangeRepo)
-	httpHandler := http.NewHandler(exchangeRepo)
+	apiKeyStorage := postgresql.NewAPIKeyStorage(pgxPool)
+	apiKeyRepo := internal.NewAPIKeyRepository(apiKeyStorage)
+
+	actionLogStorage := postgresql.NewActionLogStorage(pgxPool)
+	actionLogRepository := internal.NewActionLogRepository(actionLogStorage)
+
+	httpServer := http.NewServer(exchangeRepo, apiKeyRepo, actionLogRepository)
+	httpHandler := http.NewHandler(httpServer)
 
 	err := httpServer.Start("8000", httpHandler.InitRouters())
 	if err != nil {

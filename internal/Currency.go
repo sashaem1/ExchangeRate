@@ -17,14 +17,17 @@ type Currency struct {
 }
 
 func NewCurrency(code string) (Currency, error) {
+	op := "internal.currency.NewCurrency"
 	code = strings.ToUpper(strings.TrimSpace(code))
 
 	if len(code) != 3 {
-		return Currency{}, fmt.Errorf("код валюты должен состоять из 3 символов")
+		err := fmt.Sprintf("Название действия должно состоять из 4 символов")
+		return Currency{}, fmt.Errorf("%s: %s", op, err)
 	}
 
 	if _, ok := defaultBase[code]; !ok {
-		return Currency{}, fmt.Errorf("Отсутствует такая валюта в системе: %s", code)
+		err := fmt.Sprintf("Отсутствует такая валюта в системе: %s", code)
+		return Currency{}, fmt.Errorf("%s: %s", op, err)
 	}
 
 	return Currency{Code: code}, nil

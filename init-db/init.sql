@@ -3,13 +3,14 @@ CREATE TABLE IF NOT EXISTS exchange_rates (
     BaseCurrency VARCHAR(3) NOT NULL,
     TargetCurrency VARCHAR(3) NOT NULL,
     rate FLOAT NOT NULL,
-    updated_at DATE DEFAULT CURRENT_DATE
+    updated_at DATE DEFAULT CURRENT_DATE,
+    CONSTRAINT unique_exchange_date UNIQUE (BaseCurrency, TargetCurrency, updated_at)
 );
 
 CREATE TABLE IF NOT EXISTS exchange_rates_log (
     id SERIAL PRIMARY KEY,
-    request VARCHAR(4) NOT NULL,
-    updated_at DATE DEFAULT CURRENT_DATE
+    action_name VARCHAR(4) NOT NULL,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS api_keys (

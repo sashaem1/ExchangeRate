@@ -3,8 +3,10 @@ package internal
 import (
 	"context"
 	"fmt"
-	"os"
+	"log"
 	"time"
+
+	"github.com/robfig/cron/v3"
 )
 
 type ExchangeID string
@@ -18,9 +20,19 @@ type Exchange struct {
 }
 
 const dataFormat string = "2006-01-02"
+const cronUpdateTime string = "00 12 * * *"
+
+var initDates []time.Time = []time.Time{
+	time.Date(2025, time.July, 21, 0, 0, 0, 0, time.UTC),
+	time.Date(2025, time.July, 22, 0, 0, 0, 0, time.UTC),
+	time.Date(2025, time.July, 23, 0, 0, 0, 0, time.UTC),
+	time.Date(2025, time.July, 24, 0, 0, 0, 0, time.UTC),
+	time.Date(2025, time.July, 25, 0, 0, 0, 0, time.UTC),
+	time.Now(),
+}
 
 func NewExchange(baseCurrency, targetCurrency Currency, rate float64, timestamp time.Time) (Exchange, error) {
-	op := "internal.NewExchange"
+	op := "internal.Exchange.NewExchange"
 
 	if rate <= 0.0 {
 		return Exchange{}, fmt.Errorf("%s: Значение курса должно быть положительным", op)
@@ -36,10 +48,8 @@ func NewExchange(baseCurrency, targetCurrency Currency, rate float64, timestamp 
 }
 
 type ExchangeStorage interface {
-	GetExchange(ctx context.Context, baseCurrencyCode, targetCurrencyCode string, date time.Time) (Exchange, error)
-	SetExchange(ctx context.Context, exchange Exchange) error
-	GetAPIKey(ctx context.Context, APIKey string) (string, error)
-	SetAPIKey(ctx context.Context, APIKey string) error
+	Get(ctx context.Context, baseCurrencyCode, targetCurrencyCode string, date time.Time) (Exchange, error)
+	Set(ctx context.Context, exchange Exchange) error
 }
 
 type ExchangeExternalAPI interface {
@@ -60,24 +70,24 @@ func NewExchangeRepository(storage ExchangeStorage, externalAPI ExchangeExternal
 }
 
 func (rr *ExchangeRepository) GetByBase(baseCurrencyCode, targetCurrencyCode string) (Exchange, error) {
-	op := "Exchange.GetByBase"
+	op := "internal.Exchange.GetByBase"
 	ctx := context.Background()
 
-	exchange, err := rr.storage.GetExchange(ctx, baseCurrencyCode, targetCurrencyCode, time.Now())
+	exchange, err := rr.storage.Get(ctx, baseCurrencyCode, targetCurrencyCode, time.Now())
 	if err != nil {
-		return Exchange{}, fmt.Errorf("%s:%s", op, err)
+		return Exchange{}, fmt.Errorf("%s: %s", op, err)
 	}
 
 	if exchange.Timestamp.IsZero() {
 		exchange, err = rr.externalAPI.GetByBase(baseCurrencyCode, targetCurrencyCode)
 		if err != nil {
 
-			return Exchange{}, fmt.Errorf("%s:%s", op, err)
+			return Exchange{}, fmt.Errorf("%s: %s", op, err)
 		}
 
-		err = rr.storage.SetExchange(ctx, exchange)
+		err = rr.storage.Set(ctx, exchange)
 		if err != nil {
-			return Exchange{}, fmt.Errorf("%s:%s", op, err)
+			return Exchange{}, fmt.Errorf("%s: %s", op, err)
 		}
 	}
 
@@ -85,7 +95,7 @@ func (rr *ExchangeRepository) GetByBase(baseCurrencyCode, targetCurrencyCode str
 }
 
 func (rr *ExchangeRepository) GetByDate(date string) ([]Exchange, error) {
-	op := "Exchange.GetByDate"
+	op := "internal.Exchange.GetByDate"
 	ctx := context.Background()
 
 	exchanges := []Exchange{}
@@ -118,13 +128,13 @@ func (rr *ExchangeRepository) GetByDate(date string) ([]Exchange, error) {
 }
 
 func (rr *ExchangeRepository) getByDateFromDb(ctx context.Context, date time.Time) (exchanges []Exchange, missingExchange map[string][]string, err error) {
-	op := "internal.GetByDateFromDb"
+	op := "internal.Exchange.GetByDateFromDb"
 	exchanges = []Exchange{}
 	missingExchange = make(map[string][]string)
 
 	for baseCurrencyCode, targetCurrencyCodes := range defaultBase {
 		for _, tcc := range targetCurrencyCodes {
-			currentExchange, err := rr.storage.GetExchange(ctx, baseCurrencyCode, tcc, date)
+			currentExchange, err := rr.storage.Get(ctx, baseCurrencyCode, tcc, date)
 			if err != nil {
 				return exchanges, missingExchange, fmt.Errorf("%s: %s", op, err)
 			}
@@ -142,7 +152,7 @@ func (rr *ExchangeRepository) getByDateFromDb(ctx context.Context, date time.Tim
 }
 
 func (rr *ExchangeRepository) getByDateFromExAPI(ctx context.Context, date time.Time) (exchanges []Exchange, err error) {
-	op := "internal.GetByDateFromExAPI"
+	op := "internal.Exchange.GetByDateFromExAPI"
 	exchanges = []Exchange{}
 
 	for baseCurrencyCode, targetCurrencyCodes := range defaultBase {
@@ -161,14 +171,14 @@ func (rr *ExchangeRepository) getByDateFromExAPI(ctx context.Context, date time.
 }
 
 func (rr *ExchangeRepository) setByMisToDb(ctx context.Context, date time.Time, missingExchange map[string][]string, exchanges []Exchange) error {
-	op := "internal.setByMisToDb"
+	op := "internal.Exchange.setByMisToDb"
 
 	for _, exchange := range exchanges {
 		misTarCurrencyCodes, ok := missingExchange[exchange.BaseCurrency.Code]
 		if ok {
 			for _, mtcc := range misTarCurrencyCodes {
 				if exchange.TargetCurrency.Code == mtcc {
-					err := rr.storage.SetExchange(ctx, exchange)
+					err := rr.storage.Set(ctx, exchange)
 					if err != nil {
 						return fmt.Errorf("%s: %s", op, err)
 					}
@@ -180,37 +190,15 @@ func (rr *ExchangeRepository) setByMisToDb(ctx context.Context, date time.Time, 
 	return nil
 }
 
-func (rr *ExchangeRepository) VerificationAPIKey(APIKey string) (bool, error) {
-	op := "internal.VerificationAPIKey"
-	ctx := context.Background()
-
-	verification, err := rr.storage.GetAPIKey(ctx, APIKey)
-	if err != nil {
-		return false, fmt.Errorf("%s: %s", op, err)
-	}
-
-	return verification != "", nil
-}
-
-func (rr *ExchangeRepository) InitExchangeRepository() error {
-	op := "internal.InitExchangeRepository"
-	ctx := context.Background()
-	initDates := []time.Time{
-		time.Date(2025, time.July, 21, 0, 0, 0, 0, time.UTC),
-		time.Date(2025, time.July, 22, 0, 0, 0, 0, time.UTC),
-		time.Date(2025, time.July, 23, 0, 0, 0, 0, time.UTC),
-		time.Date(2025, time.July, 24, 0, 0, 0, 0, time.UTC),
-		time.Date(2025, time.July, 25, 0, 0, 0, 0, time.UTC),
-		time.Now(),
-	}
+func (rr *ExchangeRepository) InitExchangeRepository(ctx context.Context) error {
+	op := "internal.Exchange.InitExchangeRepository"
 
 	err := rr.initData(ctx, initDates)
 	if err != nil {
 		return fmt.Errorf("%s: %s", op, err)
 	}
 
-	envAPIKey := os.Getenv("DEFAULT_API_KEY")
-	err = rr.initAPIKey(ctx, envAPIKey)
+	err = rr.сronUpdateData(ctx)
 	if err != nil {
 		return fmt.Errorf("%s: %s", op, err)
 	}
@@ -219,7 +207,7 @@ func (rr *ExchangeRepository) InitExchangeRepository() error {
 }
 
 func (rr *ExchangeRepository) initData(ctx context.Context, initDates []time.Time) error {
-	op := "internal.initData"
+	op := "internal.Exchange.initData"
 
 	for _, date := range initDates {
 		exchanges, err := rr.getByDateFromExAPI(ctx, date)
@@ -236,13 +224,28 @@ func (rr *ExchangeRepository) initData(ctx context.Context, initDates []time.Tim
 	return nil
 }
 
-func (rr *ExchangeRepository) initAPIKey(ctx context.Context, APIKey string) error {
-	op := "internal.initAPIKey"
+func (rr *ExchangeRepository) сronUpdateData(ctx context.Context) error {
+	op := "internal.Exchange.InitExchangeRepository"
+	cron := cron.New()
 
-	err := rr.storage.SetAPIKey(ctx, APIKey)
+	_, err := cron.AddFunc(cronUpdateTime, func() {
+		log.Printf("!Проверка крона! Время:", time.Now().Format(time.RFC3339))
+		initDates := []time.Time{
+			time.Now(),
+		}
+
+		err := rr.initData(ctx, initDates)
+		if err != nil {
+			log.Printf("%s: %s", op, err)
+		}
+
+	})
+
 	if err != nil {
 		return fmt.Errorf("%s: %s", op, err)
 	}
+
+	cron.Start()
 
 	return nil
 }
