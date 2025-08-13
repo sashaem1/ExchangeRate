@@ -9,22 +9,9 @@ git clone httpsgithub.comsashaem1ExchangeRate.git
 ```
 cd .\ExchangeRate\
 ```
-3. Создайте .env файл в корневой папке со следующими переменными:
+3. Создайте .env файл в корневой папке по примеру .env.example
 
-
-- DB_HOST
-- DB_PORT
-- DB_USER
-- DB_PASSWORD
-- DB_NAME
-- POSTGRES_USER
-- POSTGRES_PASSWORD
-- POSTGRES_DB
-- FREECURRENCY_API_KEY
-> Ключ с сайта app.freecurrencyapi.com
-- DEFAULT_API_KEY
-> Ключ для доступа к программе
-4. Запустите программу d rjyntqytht 
+4. Запустите программу в контейнере
 ```
 docker-compose up --build
 ```
