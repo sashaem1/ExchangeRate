@@ -31,11 +31,21 @@ var initDates []time.Time = []time.Time{
 	time.Now(),
 }
 
-func NewExchange(baseCurrency, targetCurrency Currency, rate float64, timestamp time.Time) (Exchange, error) {
+func NewExchange(baseCurrencyCode, targetCurrencyCode string, rate float64, timestamp time.Time) (Exchange, error) {
 	op := "internal.Exchange.NewExchange"
 
 	if rate <= 0.0 {
 		return Exchange{}, fmt.Errorf("%s: Значение курса должно быть положительным", op)
+	}
+
+	baseCurrency, err := NewCurrency(baseCurrencyCode)
+	if err != nil {
+		return Exchange{}, fmt.Errorf("%s: %s", op, err)
+	}
+
+	targetCurrency, err := NewCurrency(targetCurrencyCode)
+	if err != nil {
+		return Exchange{}, fmt.Errorf("%s: %s", op, err)
 	}
 
 	newExchange := Exchange{

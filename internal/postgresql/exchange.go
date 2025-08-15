@@ -20,17 +20,17 @@ func NewExchangeStorage(pgPool *pgxpool.Pool) *ExchangeStorage {
 }
 
 func (es *ExchangeStorage) Get(ctx context.Context, baseCurrencyCode, targetCurrencyCode string, date time.Time) (internal.Exchange, error) {
-	op := "postgresql.GetExchange"
+	op := "postgresql.exchange.GetExchange"
 
 	query := `SELECT rate, updated_at 
               FROM exchange_rates 
               WHERE baseCurrency = $1 AND targetCurrency = $2 AND DATE(updated_at) = DATE($3)`
 
-	var exchange internal.Exchange
-
+	var scanRate float64
+	var scanTimestamp time.Time
 	err := es.pgPool.QueryRow(ctx, query, baseCurrencyCode, targetCurrencyCode, date).Scan(
-		&exchange.Rate,
-		&exchange.Timestamp,
+		&scanRate,
+		&scanTimestamp,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -39,23 +39,16 @@ func (es *ExchangeStorage) Get(ctx context.Context, baseCurrencyCode, targetCurr
 		return internal.Exchange{}, fmt.Errorf("%s: %s", op, err)
 	}
 
-	baseCurrency, err := internal.NewCurrency(baseCurrencyCode)
+	exchange, err := internal.NewExchange(baseCurrencyCode, targetCurrencyCode, scanRate, scanTimestamp)
 	if err != nil {
 		return internal.Exchange{}, fmt.Errorf("%s: %s", op, err)
 	}
-	exchange.BaseCurrency = baseCurrency
-
-	targetCurrency, err := internal.NewCurrency(targetCurrencyCode)
-	if err != nil {
-		return internal.Exchange{}, fmt.Errorf("%s: %s", op, err)
-	}
-	exchange.TargetCurrency = targetCurrency
 
 	return exchange, nil
 }
 
 func (es *ExchangeStorage) Set(ctx context.Context, exchange internal.Exchange) error {
-	op := "postgresql.SetExchange"
+	op := "postgresql.exchange.SetExchange"
 
 	query := `INSERT INTO exchange_rates (BaseCurrency, TargetCurrency, rate, updated_at) 
 		VALUES ($1, $2, $3, $4)

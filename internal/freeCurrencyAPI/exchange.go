@@ -31,7 +31,7 @@ func NewExchangeExternalAPI(APIKey string) *ExchangeExternalAPI {
 }
 
 func (fc *ExchangeExternalAPI) GetByBase(baseCurrencyCode, targetCurrencyCode string) (internal.Exchange, error) {
-	op := "FreeCurrencyAPI.GetByBase"
+	op := "FreeCurrencyAPI.exchange.GetByBase"
 
 	requestUrl := fmt.Sprintf("%s?&apikey=%s&base_currency=%s&currencies=%s", baseURL, fc.APIKey, baseCurrencyCode, targetCurrencyCode)
 
@@ -53,29 +53,16 @@ func (fc *ExchangeExternalAPI) GetByBase(baseCurrencyCode, targetCurrencyCode st
 		return internal.Exchange{}, fmt.Errorf("%s: %s", op, err)
 	}
 
-	// log.Printf("Получены данные с FreeCurrencyAPI: %v", apiResp)
-
-	exchange := internal.Exchange{}
-	baseCurrency, err := internal.NewCurrency(baseCurrencyCode)
+	exchange, err := internal.NewExchange(baseCurrencyCode, targetCurrencyCode, apiResp.Rates[targetCurrencyCode], time.Now())
 	if err != nil {
 		return internal.Exchange{}, fmt.Errorf("%s: %s", op, err)
 	}
-	exchange.BaseCurrency = baseCurrency
-
-	targetCurrency, err := internal.NewCurrency(targetCurrencyCode)
-	if err != nil {
-		return internal.Exchange{}, fmt.Errorf("%s: %s", op, err)
-	}
-	exchange.TargetCurrency = targetCurrency
-
-	exchange.Rate = apiResp.Rates[targetCurrencyCode]
-	exchange.Timestamp = time.Now()
 
 	return exchange, nil
 }
 
 func (fc *ExchangeExternalAPI) GetByDate(baseCurrencyCode string, targetCurrencyCode []string, date time.Time) ([]internal.Exchange, error) {
-	op := "FreeCurrencyAPI.GetByDate"
+	op := "FreeCurrencyAPI.exchange.GetByDate"
 	parsedDate := date.Format(baseTimeFormate)
 	result := make([]internal.Exchange, 0, 4)
 
@@ -95,21 +82,15 @@ func (fc *ExchangeExternalAPI) GetByDate(baseCurrencyCode string, targetCurrency
 	}
 
 	for tcc, rate := range apiResp.Rates {
-		curExchange := internal.Exchange{}
-		baseCurrency, err := internal.NewCurrency(baseCurrencyCode)
+		if rate == 0 {
+			err := fmt.Sprintf("Не удалось получить данные со стороннего апи")
+			return result, fmt.Errorf("%s: %s", op, err)
+		}
+
+		curExchange, err := internal.NewExchange(baseCurrencyCode, tcc, rate, date)
 		if err != nil {
 			return result, fmt.Errorf("%s: %s", op, err)
 		}
-		curExchange.BaseCurrency = baseCurrency
-
-		targetCurrency, err := internal.NewCurrency(tcc)
-		if err != nil {
-			return result, fmt.Errorf("%s: %s", op, err)
-		}
-		curExchange.TargetCurrency = targetCurrency
-
-		curExchange.Rate = rate
-		curExchange.Timestamp = date
 
 		result = append(result, curExchange)
 	}

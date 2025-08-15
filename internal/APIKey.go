@@ -34,7 +34,7 @@ func NewAPIKeyRepository(storage APIKeyStorage) *APIKeyRepository {
 }
 
 func (rr *APIKeyRepository) VerificationAPIKey(key string) (APIKey, error) {
-	op := "internal.VerificationAPIKey"
+	op := "internal.APIKey.VerificationAPIKey"
 	ctx := context.Background()
 
 	verAPIKey, err := rr.storage.Get(ctx, key)
@@ -59,7 +59,7 @@ func (rr *APIKeyRepository) InitAPIKeyRepository(ctx context.Context) error {
 }
 
 func (rr *APIKeyRepository) initAPIKey(ctx context.Context, APIKey APIKey) error {
-	op := "internal.initAPIKey"
+	op := "internal.APIKey.initAPIKey"
 
 	err := rr.storage.Set(ctx, APIKey)
 	if err != nil {

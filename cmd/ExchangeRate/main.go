@@ -17,7 +17,7 @@ import (
 )
 
 func main() {
-	pgxPool := initDb()
+	pgxPool := initDbConnect()
 	exchangeStorage := postgresql.NewExchangeStorage(pgxPool)
 	externalAPIKey := os.Getenv("FREECURRENCY_API_KEY")
 	ExchangeExternalAPI := freecurrencyapi.NewExchangeExternalAPI(externalAPIKey)
@@ -39,15 +39,15 @@ func main() {
 
 }
 
-func initDb() *pgxpool.Pool {
-	op := "main.initDb"
+func initDbConnect() *pgxpool.Pool {
+	op := "main.main.initDbConnect"
 	ctx := context.Background()
 
 	dbHost := os.Getenv("DB_HOST")
 	dbPort := os.Getenv("DB_PORT")
 	dbUser := os.Getenv("DB_USER")
-	dbPassword := os.Getenv("DB_PASSWORD")
 	dbName := os.Getenv("DB_NAME")
+	dbPassword := os.Getenv("DB_PASSWORD")
 
 	if dbHost == "" || dbPort == "" || dbUser == "" || dbPassword == "" || dbName == "" {
 		log.Fatalf("Не хватает данных из переменных окружения для подключения к бд")
@@ -73,7 +73,7 @@ func initDb() *pgxpool.Pool {
 			return pgxPool
 		}
 
-		log.Printf("Пинг базы данных %d/%d failed: %v", attempt, maxAttempts, err)
+		log.Printf("Пинг базы данных %d/%d. Ошибка: %v", attempt, maxAttempts, err)
 
 		if attempt < maxAttempts {
 			time.Sleep(retryDelay)
