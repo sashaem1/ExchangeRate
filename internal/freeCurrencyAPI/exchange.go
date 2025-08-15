@@ -41,15 +41,15 @@ func (fc *ExchangeExternalAPI) GetByBase(baseCurrencyCode, targetCurrencyCode st
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode != http.StatusOK {
+		err := fmt.Sprintf("%s: Не удалось получить данные со стороннего апи. Ответ: %s", op, resp.Status)
+		return internal.Exchange{}, fmt.Errorf("%s: %s", op, err)
+	}
+
 	body, _ := io.ReadAll(resp.Body)
 
 	var apiResp RateResponse
 	if err := json.Unmarshal(body, &apiResp); err != nil {
-		return internal.Exchange{}, fmt.Errorf("%s: %s", op, err)
-	}
-
-	if apiResp.Rates[targetCurrencyCode] == 0 {
-		err := fmt.Sprintf("Не удалось получить данные со стороннего апи")
 		return internal.Exchange{}, fmt.Errorf("%s: %s", op, err)
 	}
 
@@ -74,14 +74,15 @@ func (fc *ExchangeExternalAPI) GetByDate(baseCurrencyCode string, targetCurrency
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode != http.StatusOK {
+		err := fmt.Sprintf("%s: Не удалось получить данные со стороннего апи. Ответ: %s", op, resp.Status)
+		return result, fmt.Errorf("%s: %s", op, err)
+	}
+
 	body, _ := io.ReadAll(resp.Body)
 
 	var apiResp RateResponse
 	if err := json.Unmarshal(body, &apiResp); err != nil {
-		return result, fmt.Errorf("%s: %s", op, err)
-	}
-	if len(apiResp.Rates) == 0 {
-		err := fmt.Sprintf("Не удалось получить данные со стороннего апи")
 		return result, fmt.Errorf("%s: %s", op, err)
 	}
 
