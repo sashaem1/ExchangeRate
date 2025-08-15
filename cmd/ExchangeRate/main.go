@@ -66,7 +66,6 @@ func initDbConnect() *pgxpool.Pool {
 
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
 
-		// Пытаемся выполнить пинг
 		err = pgxPool.Ping(ctx)
 		if err == nil {
 			log.Printf("Успешное подключение к базе данных")
@@ -84,20 +83,3 @@ func initDbConnect() *pgxpool.Pool {
 	log.Fatalf("%s: %s", op, "Не удалось подключиться к бд")
 	return nil
 }
-
-// func main() {
-// 	handlers := handler.Handler{
-// 		Api: api.NewFreeCurrencyApi(),
-// 		DB:  postgresql.NewPostgreSqlDB(),
-// 	}
-
-// 	handlers.DB.InitDB(handlers.Api)
-// 	handlers.DB.CronUpdateData(handlers.Api)
-// 	defer handlers.DB.CloseConnect()
-
-// 	srv := new(server.Server)
-// 	err := srv.Run("8000", handlers.InitRouters())
-// 	if err != nil {
-// 		log.Fatalf("Ошибка старта сервера: %s", err)
-// 	}
-// }

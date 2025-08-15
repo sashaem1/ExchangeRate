@@ -80,13 +80,12 @@ func (fc *ExchangeExternalAPI) GetByDate(baseCurrencyCode string, targetCurrency
 	if err := json.Unmarshal(body, &apiResp); err != nil {
 		return result, fmt.Errorf("%s: %s", op, err)
 	}
+	if len(apiResp.Rates) == 0 {
+		err := fmt.Sprintf("Не удалось получить данные со стороннего апи")
+		return result, fmt.Errorf("%s: %s", op, err)
+	}
 
 	for tcc, rate := range apiResp.Rates {
-		if rate == 0 {
-			err := fmt.Sprintf("Не удалось получить данные со стороннего апи")
-			return result, fmt.Errorf("%s: %s", op, err)
-		}
-
 		curExchange, err := internal.NewExchange(baseCurrencyCode, tcc, rate, date)
 		if err != nil {
 			return result, fmt.Errorf("%s: %s", op, err)

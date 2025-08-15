@@ -222,7 +222,8 @@ func (rr *ExchangeRepository) initData(ctx context.Context, initDates []time.Tim
 	for _, date := range initDates {
 		exchanges, err := rr.getByDateFromExAPI(ctx, date)
 		if err != nil {
-			return fmt.Errorf("%s: %s", op, err)
+			log.Printf("%s: %s", op, err)
+			return nil
 		}
 
 		err = rr.setByMisToDb(ctx, date, defaultBase, exchanges)
