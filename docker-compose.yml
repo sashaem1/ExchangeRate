@@ -30,8 +30,20 @@ services:
       - app-network
     restart: unless-stopped
 
+  cache:
+    image: redis:alpine
+    container_name: my_redis
+    ports:
+      - "6379:6379" # Порт Redis
+    volumes:
+      - redis_data:/data # Для персистентности
+    networks:
+      - app-network
+    restart: unless-stopped
+
 volumes:
   db-data:
+  redis_data:
 
 networks:
   app-network:

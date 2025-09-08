@@ -8,22 +8,34 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/redis/go-redis/v9"
 	"github.com/sashaem1/ExchangeRate/internal"
 	"github.com/sashaem1/ExchangeRate/internal/api/http"
 	freecurrencyapi "github.com/sashaem1/ExchangeRate/internal/freeCurrencyAPI"
 	"github.com/sashaem1/ExchangeRate/internal/postgresql"
+	internalRedis "github.com/sashaem1/ExchangeRate/internal/redis"
 
 	_ "github.com/lib/pq"
 )
 
 func main() {
-	pgxPool := initDbConnect()
+	ctx := context.Background()
+
+	dbHost := os.Getenv("DB_HOST")
+	dbPort := os.Getenv("DB_PORT")
+	dbUser := os.Getenv("DB_USER")
+	dbName := os.Getenv("DB_NAME")
+	dbPassword := os.Getenv("DB_PASSWORD")
+
+	pgxPool := initDbConnect(ctx, dbHost, dbPort, dbUser, dbName, dbPassword)
 	exchangeStorage := postgresql.NewExchangeStorage(pgxPool)
 	externalAPIKey := os.Getenv("FREECURRENCY_API_KEY")
 	ExchangeExternalAPI := freecurrencyapi.NewExchangeExternalAPI(externalAPIKey)
 	exchangeRepo := internal.NewExchangeRepository(exchangeStorage, ExchangeExternalAPI)
 
-	apiKeyStorage := postgresql.NewAPIKeyStorage(pgxPool)
+	redisAddr := os.Getenv("REDIS_ADDRES")
+	rClient := initCacheConnect(ctx, redisAddr)
+	apiKeyStorage := internalRedis.NewAPIKeyStorage(rClient)
 	apiKeyRepo := internal.NewAPIKeyRepository(apiKeyStorage)
 
 	actionLogStorage := postgresql.NewActionLogStorage(pgxPool)
@@ -39,15 +51,8 @@ func main() {
 
 }
 
-func initDbConnect() *pgxpool.Pool {
+func initDbConnect(ctx context.Context, dbHost string, dbPort string, dbUser string, dbName string, dbPassword string) *pgxpool.Pool {
 	op := "main.main.initDbConnect"
-	ctx := context.Background()
-
-	dbHost := os.Getenv("DB_HOST")
-	dbPort := os.Getenv("DB_PORT")
-	dbUser := os.Getenv("DB_USER")
-	dbName := os.Getenv("DB_NAME")
-	dbPassword := os.Getenv("DB_PASSWORD")
 
 	if dbHost == "" || dbPort == "" || dbUser == "" || dbPassword == "" || dbName == "" {
 		log.Fatalf("Не хватает данных из переменных окружения для подключения к бд")
@@ -61,8 +66,8 @@ func initDbConnect() *pgxpool.Pool {
 		log.Fatalf("%s: %s", op, err)
 	}
 
-	const maxAttempts = 10
-	const retryDelay = 2 * time.Second
+	maxAttempts := 10
+	retryDelay := 2 * time.Second
 
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
 
@@ -82,4 +87,36 @@ func initDbConnect() *pgxpool.Pool {
 	pgxPool.Close()
 	log.Fatalf("%s: %s", op, "Не удалось подключиться к бд")
 	return nil
+}
+
+func initCacheConnect(ctx context.Context, redisAddr string) *redis.Client {
+	op := "main.main.initCacheConnect"
+
+	rClient := redis.NewClient(&redis.Options{
+		Addr:     redisAddr,
+		Password: "",
+		DB:       0,
+	})
+
+	maxAttempts := 10
+	retryDelay := 2 * time.Second
+
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+
+		_, err := rClient.Ping(ctx).Result()
+		if err == nil {
+			log.Printf("Успешное подключение к Redis")
+			return rClient
+		}
+
+		log.Printf("Пинг Redis %d/%d. Ошибка: %v", attempt, maxAttempts, err)
+
+		if attempt < maxAttempts {
+			time.Sleep(retryDelay)
+		}
+	}
+
+	log.Fatalf("%s: %s", op, "Не удалось подключиться к Redis")
+
+	return rClient
 }
